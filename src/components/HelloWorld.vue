@@ -13,7 +13,9 @@ let currentTime = new Date();
 currentTime.setMinutes(currentTime.getMinutes() + 30);
 let timestampAfter30Minutes = Math.floor(currentTime.getTime() / 1000); // 转换为秒级时间戳
 let inputText = ref("");
+
 const secretKey = "30lJkIm4BA9Z8hDTXXSDsSyOjx4A8udE";
+
 let options = {
   Action: "TextToStreamAudioWSv2",
   AppId: 1328786870,
@@ -111,10 +113,12 @@ function generateRandomNumber() {
 }
 
 const send = (text) => {
-  // let demo =
-  //   '{"session_id": "381665d8-31f6-11ef-894a-52540037edd7", "message_id": "3b46df26-31f6-11ef-894a-52540037edd7", "action": "ACTION_SYNTHESIS", "data": "\u5355\u662f\u5468\u56f4\u77ed\u77ed\u7684\u6ce5\u5899\u6839\u4e00\u5e26\uff0c\u5c31\u6709\u65e0\u9650\u8da3\u5473\u3002"}';
+  if (!text) {
+    return;
+  } else {
+    text += "。";
+  }
   sendObj.data = text;
-  // sendObj.data = dataToUnicode(text);
 
   sendObj.session_id = generateRandomNumber();
   sendObj.message_id = generateRandomNumber();

@@ -8,7 +8,7 @@ export class WebSocketClient extends EventDispatcher {
   // #重连次数
   private reconnectAttempts = 0;
   // #最大重连数
-  private maxReconnectAttempts = 0;
+  private maxReconnectAttempts = 3;
   // #重连间隔
   private reconnectInterval = 10000; // 10 seconds
   // #发送心跳数据间隔

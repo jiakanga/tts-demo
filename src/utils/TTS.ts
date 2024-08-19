@@ -101,4 +101,6 @@ export class TencentTTS {
     });
     return this.wssURL + newParams;
   }
+
+  wsClient() {}
 }

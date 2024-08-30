@@ -6,13 +6,13 @@ export class TencentTTS {
   Timestamp = Math.floor(new Date().getTime() / 1000);
 
   options = {
-    Action: "",
+    Action: "TextToStreamAudioWSv2",
     AppId: 1328786870,
     Codec: "mp3",
     EnableSubtitle: "True",
     Expired: this.Timestamp + 36000,
     SampleRate: 16000,
-    SecretId: "",
+    SecretId: "AKIDoTvDIAMuOzR4gOjw0zZ0JUYVWWfjgXUS",
     SessionId: this.generateRandomNumber(),
     Speed: 0,
     Timestamp: this.Timestamp, // 确保是秒级时间戳

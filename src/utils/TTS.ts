@@ -6,7 +6,7 @@ export class TencentTTS {
   Timestamp = Math.floor(new Date().getTime() / 1000);
 
   options = {
-    Action: "TextToStreamAudioWSv2",
+    Action: "",
     AppId: 1328786870,
     Codec: "mp3",
     EnableSubtitle: "True",

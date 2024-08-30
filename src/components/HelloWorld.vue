@@ -1,18 +1,57 @@
+<template>
+  <div>
+    <input type="text" v-model="inputText" />
+    <button @click="client()">点击链接</button>
+    <button @click="send(inputText)">点击发送</button>
+    <button @click="playBlob(blobs)">点击播放</button>
+    <audio ref="audioPlayer" id="audioPlayer" controls>
+      <source :src="audioUrl" type="audio/mpeg" autoplay />
+      Your browser does not support the audio element.
+    </audio>
+  </div>
+</template>
+
 <script setup>
-import { ref, onMounted, reactive } from "vue";
+import { ref, onMounted } from "vue";
 import { WebSocketClient } from "../utils/websoket/index";
-import { TencentTTS } from "../utils/TTS";
+import { TencentTTS } from '../utils/TTS';
 
 defineProps({
   msg: String,
 });
+const audioPlayer = ref(null);
+// let sourceBuffer = null;
+// let mediaSource = null;
+const blobs = ref([]);
+const show = ref(false);
+const audioUrl = ref();
+let mediaSource = new MediaSource();
+let sourceBuffer;
+let queue = [];
+let isUpdating = false;
 
 let currentTime = new Date();
 currentTime.setMinutes(currentTime.getMinutes() + 30);
 let timestampAfter30Minutes = Math.floor(currentTime.getTime() / 1000); // 转换为秒级时间戳
-let inputText = ref("床前明月光，疑是地上霜。");
-
+let inputText = ref("");
 const secretKey = "30lJkIm4BA9Z8hDTXXSDsSyOjx4A8udE";
+let options = {
+  Action: "TextToStreamAudioWSv2",
+  AppId: 1328786870,
+  Codec: "mp3",
+  EnableSubtitle: "True",
+  Expired: timestampAfter30Minutes,
+  SampleRate: 16000,
+  SecretId: "AKIDoTvDIAMuOzR4gOjw0zZ0JUYVWWfjgXUS",
+  SessionId: timestampAfter30Minutes + 360000,
+  Speed: 0,
+  Timestamp: Math.floor(timestampAfter30Minutes / 1000), // 确保是秒级时间戳
+  VoiceType: 101001,
+  Volume: 0,
+};
+
+let ws;
+
 let sendObj = {
   session_id: "",
   message_id: "",
@@ -20,37 +59,87 @@ let sendObj = {
   data: "",
 };
 
-// todo 升级唯一session_id 标识 根据session_id 拼接blobs
-const TTSClient = reactive({
-  session_id: null,
-  type: 2,
-  ws: null,
-  blobs: [],
-});
+// const appendBuffer = (blob) => {
+//   const reader = new FileReader();
+//   reader.onload = () => {
+//     const arrayBuffer = reader.result;
+//     if (sourceBuffer && !sourceBuffer.updating && !audioPlayer.value.error ) {
+//       sourceBuffer.appendBuffer(arrayBuffer);
+//     }
+//   };
+//   reader.readAsArrayBuffer(blob);
+// };
 
-const type = {
-  0: "连接失败",
-  1: "连接成功，准备完成",
-  2: "未连接",
-  3: "发送中",
-  4: "发送成功",
-  5: "已经关闭",
+// const onSourceOpen = () => {
+//   if (!sourceBuffer) {
+//     sourceBuffer = mediaSource.addSourceBuffer('audio/mpeg');
+//     sourceBuffer.addEventListener('updateend', () => {
+//       // 当 sourceBuffer 更新结束时，可以继续追加数据
+//       if (ws && ws.readyState === WebSocket.OPEN) {
+//         ws.onmessage((res) => {
+//           if (typeof res.data == "object") {
+//             appendBuffer(res.data);
+//           }
+//         });
+//       }
+//     });
+//   }
+// };
+
+const appendBuffer = (blob) => {
+  const reader = new FileReader();
+  reader.onload = () => {
+    const arrayBuffer = reader.result;
+    queue.push(arrayBuffer);
+    processQueue();
+  };
+  reader.readAsArrayBuffer(blob);
 };
+
+const processQueue = () => {
+  if (queue.length > 0 && !isUpdating && sourceBuffer && !audioPlayer.error) {
+    console.log(
+      "%c [ queue ]-102-「HelloWorld」",
+      "font-size:13px; background:pink; color:#bf2c9f;",
+      queue
+    );
+    const buffer = queue.shift();
+
+    isUpdating = true;
+    sourceBuffer.appendBuffer(buffer);
+  }
+};
+
+const onSourceOpen = () => {
+  if (!sourceBuffer) {
+    sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+    sourceBuffer.mode = "sequence"; // Ensure the buffer is appended in sequence
+    sourceBuffer.addEventListener("updateend", () => {
+      isUpdating = false;
+      processQueue(); // Continue processing the queue after each update
+    });
+  }
+};
+mediaSource.addEventListener("sourceopen", onSourceOpen);
+
 const client = async () => {
+  sourceBuffer = null;
+  mediaSource = null;
   const tencentTTS = new TencentTTS({}, secretKey);
   let TENCENT_TTS_WS_URL = await tencentTTS.buildUrl();
-  let ws = (TTSClient.ws = new WebSocketClient(TENCENT_TTS_WS_URL));
+
+  ws = new WebSocketClient(TENCENT_TTS_WS_URL);
 
   ws.connect();
   ws.onmessage((res) => {
-    if (res.data instanceof Blob) {
-      TTSClient.blobs.push(res.data);
+    if (typeof res.data == "object") {
+      appendBuffer(res.data);
     } else {
       let data = JSON.parse(res.data);
-      if (data.final) {
-        // 表示合成完毕 需要关闭连接
-        TTSClient.type = 5;
-        ws.close();
+
+      if (data.final == 0) {
+        // 表示合成完毕
+        // ws.close();
       }
       if (data.ready === 1) {
         console.log(
@@ -58,7 +147,6 @@ const client = async () => {
           "font-size:13px; background:pink; color:#bf2c9f;",
           data.ready
         );
-        TTSClient.type = 1;
       }
     }
   });
@@ -68,147 +156,58 @@ const client = async () => {
       "font-size:13px; background:pink; color:#bf2c9f;",
       err
     );
-    // ws.close();
   });
+  mediaSource = new MediaSource();
+  mediaSource.addEventListener("sourceopen", onSourceOpen);
+
+  // 设置 audio 元素的 src 属性
+  audioPlayer.value.src = URL.createObjectURL(mediaSource);
 };
-const clientMore = async () => {
-  console.log("[ clientMore ]-75-「HelloWorld」开始");
-  const TTSList = ref({});
 
-  for (let i = 0; i < 10; i++) {
-    new Promise((resolve, reject) => {
-      const tencentTTS = new TencentTTS({}, secretKey);
-      tencentTTS
-        .buildUrl()
-        .then((TENCENT_TTS_WS_URL) => {
-          const ws = new WebSocketClient(TENCENT_TTS_WS_URL);
-          ws.connect();
-
-          TTSList.value[i] = {
-            key: i,
-            ws,
-            type: 2,
-            blobs: [],
-          };
-
-          ws.onmessage = (res) => {
-            if (res.data instanceof Blob) {
-              TTSList.value[i].blobs.push(res.data);
-            } else {
-              const data = JSON.parse(res.data);
-              if (data.final) {
-                TTSList.value[i].type = 5;
-                ws.close();
-              }
-              if (data.ready === 1) {
-                console.log(
-                  "[ 准备完成，可以发送文本 ]-120-「HelloWorld」",
-                  data.ready
-                );
-
-                TTSList.value[i].type = 1;
-                if (i === 9) {
-                  console.log(
-                    "[ clientMore ]-75-「HelloWorld」结束",
-                    TTSList.value
-                  );
-                  resolve();
-                } else {
-                  console.log("[ clientMore ]-75-「HelloWorld」进行中", i);
-                }
-              }
-            }
-          };
-
-          ws.onerror = (error) => {
-            console.error("[ WebSocket error ]", error);
-            reject(error);
-          };
-        })
-        .catch((error) => {
-          console.error("[ error ]-110-「HelloWorld」", error);
-          reject(error);
-        });
-    });
-  }
-
-  console.log("[ clientMore ]-75-「HelloWorld」结束", TTSList.value);
-  return TTSList.value;
-};
 let isShow = ref(false);
 let blobUr = ref("");
-// 创建一个函数来播放 Blob
+
 function playBlob(blob) {
-  isShow.value = false;
-  let blobs = [...TTSClient.blobs];
-  const newBolb = new Blob(blobs, { type: "audio/mp3" });
-  // 将 Blob 转换为 URL
+  isShow.value = true;
+  const newBolb = new Blob([...blob], { type: "audio/mp3" });
   const blobUrl = URL.createObjectURL(newBolb);
   blobUr.value = blobUrl;
-  // isShow.value = true;
-  // 创建一个新的 audio 元素
+  isShow.value = true;
   const audio = new Audio(blobUrl);
-  audio.play();
-  // 当音频播放完毕后，释放 URL 对象
   audio.onended = function () {
     URL.revokeObjectURL(blobUrl);
   };
-  // 播放音频
-  // audio.play();
+}
+
+function generateRandomNumber() {
+  return Math.floor(Math.random() * 9000000000) + 1000000000;
 }
 
 const send = (text) => {
-  if (!text) {
-    return;
-  } else {
-    text += "。";
-  }
-  // 清理历史blob
-  TTSClient.blobs = [];
   sendObj.data = text;
-  // sendObj.session_id = generateRandomNumber();
-  // sendObj.message_id = generateRandomNumber();
-  if (TTSClient.type === 0 || TTSClient.type === 2) {
-    console.log(
-      "%c [ send ]-183-「HelloWorld」",
-      "font-size:13px; background:pink; color:#bf2c9f;",
-      "请先连接"
-    );
-    return;
-  }
-  TTSClient.ws.send(JSON.stringify(sendObj));
+  sendObj.session_id = generateRandomNumber();
+  sendObj.message_id = generateRandomNumber();
+  ws.send(JSON.stringify(sendObj));
   console.log(
     "%c [ JSON.stringify(sendObj) ]-240-「HelloWorld」",
     "font-size:13px; background:pink; color:#bf2c9f;",
     JSON.stringify(sendObj)
   );
 };
-</script>
 
-<template>
-  <div class="container">
-    <input type="text" v-model="inputText" />
-    <button @click="client()">点击链接TTS({{ type[TTSClient.type] }})</button>
-    <button @click="clientMore()">同时连接100个</button>
-    <button @click="send(inputText)">点击发送</button>
-    <button @click="playBlob">点击播放</button>
-    <audio controls v-if="isShow">
-      <source :src="blobUr" type="audio/mpeg" autoplay />
-      <!-- <source
-        src="https://m701.music.126.net/20240818140313/4e79f4a4f2c2c6392119edd74fc4e550/jdymusic/obj/wo3DlMOGwrbDjj7DisKw/12363111287/9f5c/ccf4/6918/626c295d5fc9cae55c5b65c2a3f6829e.mp3"
-        type="audio/mpeg"
-      /> -->
-      Your browser does not support the audio element.
-    </audio>
-  </div>
-</template>
+onMounted(() => {
+  if (audioPlayer.value) {
+    audioPlayer.value.addEventListener("error", (e) => {
+      console.error("音频播放错误:", e);
+    });
+  }
+  const audioPlayerDOm = document.getElementById("audioPlayer"); // Assume you have an <audio> element with this id
+  audioPlayerDOm.src = URL.createObjectURL(mediaSource);
+});
+</script>
 
 <style scoped>
 .read-the-docs {
   color: #888;
-}
-.container {
-  display: flex;
-  gap: 10px;
 }
 </style>

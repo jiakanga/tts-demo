@@ -12,7 +12,7 @@ export class TencentTTS {
     EnableSubtitle: "True",
     Expired: this.Timestamp + 36000,
     SampleRate: 16000,
-    SecretId: "AKIDoTvDIAMuOzR4gOjw0zZ0JUYVWWfjgXUS",
+    SecretId: "",
     SessionId: this.generateRandomNumber(),
     Speed: 0,
     Timestamp: this.Timestamp, // 确保是秒级时间戳
